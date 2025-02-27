@@ -1,0 +1,29 @@
+[project]
+name = "ursa-backend"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "RodolfoFigueroa",email = "4rodolfofigueroa2@gmail.com"}
+]
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi (>=0.115.8,<0.116.0)",
+    "uvicorn (>=0.34.0,<0.35.0)",
+    "geopandas (>=1.0.1,<2.0.0)",
+    "rasterio (>=1.4.3,<2.0.0)",
+    "earthengine-api (>=1.5.3,<2.0.0)",
+    "geemap (>=0.35.1,<0.36.0)",
+    "setuptools (>=75.8.1,<76.0.0)",
+    "geedim (>=1.9.0,<2.0.0)",
+    "opencv-python (>=4.11.0.86,<5.0.0.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.group.dev.dependencies]
+ipykernel = "^6.29.5"
+

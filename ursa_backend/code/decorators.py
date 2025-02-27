@@ -18,7 +18,9 @@ def cache(path: Path):
                 result = func(*args, **kwargs)
                 saver(result, path)
             return result
+
         return _wrapper
+
     return _decorator
 
 
@@ -28,5 +30,7 @@ def cache_nonsave(path: Path):
             if not path.exists():
                 function(*args, **kwargs)
             return None
+
         return _wrapper
+
     return _decorator

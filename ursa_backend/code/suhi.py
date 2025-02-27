@@ -42,8 +42,7 @@ def get_lst(bbox_ee: ee.Geometry.Polygon, start_date: str, end_date: str) -> ee.
         raise ValueError("No measurements for given date and location found.")
 
     return (
-        filtered
-        .map(fmask)
+        filtered.map(fmask)
         .select("ST_B10")
         .mean()
         .multiply(0.00341802)
@@ -67,8 +66,4 @@ def raster_to_rgb(raster_path: Path, *, vmin: float, vmax: float):
     rgb = cmap(norm(data))
     colors = np.round(rgb * 255).astype(np.uint8).flatten().tolist()
 
-    return dict(
-        data=colors,
-        width=width, 
-        height=height
-    )
+    return dict(data=colors, width=width, height=height)

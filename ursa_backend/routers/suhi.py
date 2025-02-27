@@ -11,13 +11,11 @@ from ursa_backend.models import LSTRequestModel
 
 router = APIRouter(prefix="/suhi")
 
+
 @router.post("/plot")
 async def fetch_lst(request: LSTRequestModel):
     box = shapely.box(
-        xmin=request.xmin,
-        ymin=request.ymin,
-        xmax=request.xmax,
-        ymax=request.ymax
+        xmin=request.xmin, ymin=request.ymin, xmax=request.xmax, ymax=request.ymax
     )
     box_ee = bbox_to_ee(box)
 
@@ -29,8 +27,9 @@ async def fetch_lst(request: LSTRequestModel):
     raster_path.parent.mkdir(exist_ok=True, parents=True)
 
     if not raster_path.exists():
-        geemap.download_ee_image(lst, raster_path, scale=100, crs="EPSG:4326", region=box_ee)
-    
+        geemap.download_ee_image(
+            lst, raster_path, scale=100, crs="EPSG:4326", region=box_ee
+        )
 
     image_data = raster_to_rgb(raster_path, vmin=22, vmax=45)
     image_data["xmin"] = request.xmin

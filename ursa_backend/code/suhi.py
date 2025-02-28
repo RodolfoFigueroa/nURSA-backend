@@ -1,14 +1,20 @@
 import ee
 
-import matplotlib as mpl
-import matplotlib.colors as mcol
-import numpy as np
-import rasterio as rio
 
-from pathlib import Path
+def fmask(image: ee.Image) -> ee.Image:
+    """Calculates the cloud mask for a Landsat image.
 
+    Parameters
+    ----------
+    image : ee.Image
+        The image to analyze. Must have valid cloud bands.
 
-def fmask(image):
+    Returns
+    -------
+    ee.Image
+        The resultant cloud mask image with binary values. A 0 indicates that a cloud was present.
+    """
+
     qa = image.select("QA_PIXEL")
 
     dilated_cloud_bit = 1
@@ -22,16 +28,26 @@ def fmask(image):
     return image.updateMask(mask)
 
 
-def prep_img(img):
-    orig = img
-    img = fmask(img)
-    img = img.select(["ST_B10"])
-    img = ee.Image(img.copyProperties(orig, orig.propertyNames()))
-    img = img.set({"epsg": orig.projection().crs()})
-    return img  # .resample("bicubic")
-
-
 def get_lst(bbox_ee: ee.Geometry.Polygon, start_date: str, end_date: str) -> ee.Image:
+    """Calculates the average Land Surface Temperature for a given region and date range.
+
+    Parameters
+    ----------
+    bbox_ee: ee.Geometry.Polygon
+        Region of interest.
+
+    start_date: str
+        Start date.
+
+    end_date: str
+        End date.
+
+    Returns
+    -------
+    ee.Image
+        LST image.
+    """
+
     filtered: ee.ImageCollection = (
         ee.ImageCollection("LANDSAT/LC09/C02/T1_L2")
         .filterDate(start_date, end_date)
@@ -49,21 +65,3 @@ def get_lst(bbox_ee: ee.Geometry.Polygon, start_date: str, end_date: str) -> ee.
         .add(149 - 273.15)
         .clip(bbox_ee)
     )
-
-
-def raster_to_rgb(raster_path: Path, *, vmin: float, vmax: float):
-    with rio.open(raster_path) as ds:
-        data = ds.read(1)
-        width = ds.width
-        height = ds.height
-
-    data[data == -np.inf] = np.nan
-    data[data == np.inf] = np.nan
-
-    norm = mcol.Normalize(vmin=vmin, vmax=vmax)
-    cmap = mpl.colormaps["RdBu"].reversed()
-
-    rgb = cmap(norm(data))
-    colors = np.round(rgb * 255).astype(np.uint8).flatten().tolist()
-
-    return dict(data=colors, width=width, height=height)

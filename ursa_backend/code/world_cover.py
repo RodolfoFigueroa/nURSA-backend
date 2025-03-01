@@ -15,7 +15,7 @@ def get_masks(img: ee.Image) -> dict[str, ee.Image]:
         A dictionary with three keys:
             - urban: Urban mask. All pixels with a value of 1 are urban.
             - rural: Rural mask. All pixels with a value of 1 are rural.
-            - unwanted: Unwanted mask. All pixels with a value of 0 are unwanted and shouldn't be used.
+            - unwanted: Unwanted mask. All pixels with a value of 0 are not valid and shouldn't be used.
     """
     urban_mask = img.eq(50)
 
@@ -30,16 +30,11 @@ def get_masks(img: ee.Image) -> dict[str, ee.Image]:
     return {"urban": urban_mask, "rural": rural_mask, "unwanted": unwanted_mask}
 
 
-def get_world_cover(bbox: ee.Geometry.Polygon) -> ee.Image:
-    return ee.ImageCollection("ESA/WorldCover/v200").mode().clip(bbox)
-
-
-def get_cover_and_masks(bbox: ee.Geometry.Polygon) -> tuple[ee.Image, dict]:
-    lc_cover = get_world_cover(bbox)
+def get_world_cover(bbox: ee.Geometry) -> dict[str, ee.Image]:
+    lc_cover = ee.ImageCollection("ESA/WorldCover/v200").mode().clip(bbox)
     masks = get_masks(lc_cover)
-    lc_cover = lc_cover.updateMask(masks["unwanted"])
-
-    return lc_cover, masks
+    masks["cover"] = lc_cover
+    return masks
 
 
 def get_temps(lst: ee.Image, masks: dict[str, ee.Image]) -> dict[str, dict[str, float]]:

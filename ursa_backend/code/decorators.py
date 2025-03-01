@@ -1,15 +1,17 @@
+import os
+
 from pathlib import Path
 
 
-def saver(obj, path: Path):
+def saver(obj, path: os.PathLike):
     return 1
 
 
-def loader(path: Path):
+def loader(path: os.PathLike):
     return 1
 
 
-def cache(path: Path):
+def cache(path: os.PathLike):
     def _decorator(func):
         def _wrapper(*args, **kwargs):
             if path.exists():
@@ -24,7 +26,7 @@ def cache(path: Path):
     return _decorator
 
 
-def cache_nonsave(path: Path):
+def cache_nonsave(path: os.PathLike):
     def _decorator(function):
         def _wrapper(*args, **kwargs):
             if not path.exists():

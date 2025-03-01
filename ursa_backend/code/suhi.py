@@ -1,4 +1,11 @@
 import ee
+import os
+
+import matplotlib.colors as mcol
+import numpy as np
+import rasterio as rio
+
+from ursa_backend.code.constants import LST_CAT_NODATA
 
 
 def fmask(image: ee.Image) -> ee.Image:
@@ -65,3 +72,66 @@ def get_lst(bbox_ee: ee.Geometry.Polygon, start_date: str, end_date: str) -> ee.
         .add(149 - 273.15)
         .clip(bbox_ee)
     )
+
+
+def get_raster_stats(data: np.ndarray) -> tuple[float, float]:
+    data_notna = data[np.bitwise_not(np.isnan(data))]
+    mu = np.mean(data_notna)
+    sigma = np.std(data_notna)
+    return mu, sigma
+
+
+def discretize_array(
+    arr: np.ndarray, n_pairs: int, *, nodata: float
+) -> np.ndarray[int]:
+    mu, sigma = get_raster_stats(arr)
+
+    bounds = []
+    labels = []
+    for i in range(n_pairs):
+        scale = i + 0.5
+        bounds.append(mu + sigma * scale)
+        bounds.append(mu - sigma * scale)
+        labels.append(i + 1)
+        labels.append(-(i + 1))
+
+    bounds = sorted(bounds)
+
+    # Do not change order
+    labels.append(0)
+    labels = sorted(labels)
+    labels.append(nodata)
+
+    nan_color = 2 * n_pairs
+    colors = (
+        [-1]  # below
+        + list(range(1, (n_pairs - 1) * 2 + 2))
+        + [2 * n_pairs + 1]  # above
+        + [nan_color]  # nodata
+    )
+
+    norm = mcol.BoundaryNorm(bounds, 2 * n_pairs + 1, extend="both")
+    arr_normalized = norm(arr)
+
+    out = np.zeros_like(arr, dtype=np.int8)
+    for label, color in zip(labels, colors):
+        out += (arr_normalized == color) * label
+
+    return out
+
+
+def generate_categorical_raster(
+    cont_raster_path: os.PathLike, cat_raster_path: os.PathLike
+) -> None:
+    n_color_pairs = 3
+
+    with rio.open(cont_raster_path) as ds:
+        data = np.squeeze(ds.read(1))
+        profile = ds.profile
+    data[data == profile["nodata"]] = np.nan
+
+    data_cat = discretize_array(data, n_color_pairs, nodata=LST_CAT_NODATA)
+
+    profile.update(nodata=LST_CAT_NODATA, dtype="int8")
+    with rio.open(cat_raster_path, "w", **profile) as ds:
+        ds.write(data_cat, 1)

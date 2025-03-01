@@ -10,14 +10,15 @@ router = APIRouter(prefix="/suhi")
 
 
 @router.post("/maps/continuous")
-async def lst_endpoint(raster_path: Annotated[Path, Depends(lst_dependency)]):
-    data, width, height, bounds = raster_to_rgb(raster_path)
+async def lst_endpoint(raster_path_map: Annotated[Path, Depends(lst_dependency)]):
+    data, width, height, bounds = raster_to_rgb(raster_path_map["cont"])
+    print(bounds)
     return JSONResponse(dict(data=data, width=width, height=height, bounds=bounds))
 
 
 @router.post("/maps/categorical")
-async def lst_cat_endpoint(raster_path: Annotated[Path, Depends(lst_dependency)]):
-    data, width, height, bounds = raster_to_rgb(raster_path, discrete=True)
+async def lst_cat_endpoint(raster_path_map: Annotated[Path, Depends(lst_dependency)]):
+    data, width, height, bounds = raster_to_rgb(raster_path_map["cat"], discrete=True)
     return JSONResponse(dict(data=data, width=width, height=height, bounds=bounds))
 
 

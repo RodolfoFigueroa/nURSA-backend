@@ -8,7 +8,7 @@ import matplotlib.colors as mcol
 import numpy as np
 import rasterio as rio
 
-from pathlib import Path
+from typing import Optional
 
 
 def format_date(season: str, year: int) -> list[str, str]:
@@ -106,59 +106,57 @@ def get_hash(xmin: float, ymin: float, xmax: float, ymax: float) -> str:
 
 
 def load_or_download_image(
-    img: ee.Image, raster_path: Path, bbox: ee.Geometry, nodata: float
+    img: ee.Image,
+    raster_path: os.PathLike,
+    bbox: ee.Geometry,
+    nodata: Optional[float] = None,
 ) -> None:
+    if raster_path.exists():
+        return
+
     raster_path.parent.mkdir(exist_ok=True, parents=True)
 
-    if not raster_path.exists():
+    if nodata is None:
+        temp_raster_path = raster_path
+    else:
         temp_raster_path = raster_path.with_name(f"{raster_path.stem}_temp.tif")
-        geemap.download_ee_image(
-            img,
-            temp_raster_path,
-            scale=100,
-            crs="EPSG:4326",
-            region=bbox,
-            unmask_value=nodata,
-        )
-        with rio.open(temp_raster_path) as ds:
-            data = ds.read(1)
-            orig_nodata = ds.nodata
-            width = ds.width
-            height = ds.height
-            crs = ds.crs
-            transform = ds.transform
-            dtype = ds.dtypes[0]
 
-        data[data == orig_nodata] = nodata
-        data[np.isnan(data)] = nodata
-        data = data.squeeze()
+    geemap.download_ee_image(
+        img,
+        temp_raster_path,
+        scale=100,
+        crs="EPSG:4326",
+        region=bbox,
+        unmask_value=nodata,
+    )
 
-        with rio.open(
-            raster_path,
-            "w",
-            driver="GTiff",
-            width=width,
-            height=height,
-            count=1,
-            crs=crs,
-            transform=transform,
-            dtype=dtype,
-            nodata=nodata,
-            compress="lzw",
-        ) as ds:
-            ds.write(data, 1)
+    if nodata is None:
+        return
 
-        os.remove(temp_raster_path)
+    with rio.open(temp_raster_path) as ds:
+        data = ds.read(1)
+        profile = ds.profile
+
+    data[data == profile["nodata"]] = nodata
+    data[np.isnan(data)] = nodata
+    data = data.squeeze()
+
+    profile.update(nodata=nodata, compress="lzw")
+
+    with rio.open(raster_path, "w", **profile) as ds:
+        ds.write(data, 1)
+
+    os.remove(temp_raster_path)
 
 
 def raster_to_rgb(
-    raster_path: Path, *, discrete: bool = False
+    raster_path: os.PathLike, *, discrete: bool = False
 ) -> tuple[list, int, int, list[float]]:
     """Converts a raster in the filesystem to an RGBA array.
 
     Parameters
     ----------
-    raster_path: pathlib.Path
+    raster_path: os.PathLike
         Path to the raster.
 
     vmin: float
@@ -185,32 +183,23 @@ def raster_to_rgb(
         height = ds.height
         nodata = ds.nodata
 
+    data = data.astype(float)
     data[data == nodata] = np.nan
-
-    if nodata is not None:
-        data[data == nodata] = np.nan
 
     data_notna = data[np.bitwise_not(np.isnan(data))]
 
     cmap = mpl.colormaps["RdBu"].reversed()
 
     if discrete:
-        mu = np.mean(data_notna)
-        sigma = np.std(data_notna)
-
+        vmin = -3
+        vmax = 3
         bounds = []
-        for i in range(3):
-            scale = i + 0.5
-            bounds.append(mu + sigma * scale)
-            bounds.append(mu - sigma * scale)
-        bounds = sorted(bounds)
-        norm = mcol.BoundaryNorm(bounds, cmap.N, extend="both")
     else:
         vmin = np.quantile(data_notna, 0.05)
         vmax = np.quantile(data_notna, 0.95)
         bounds = [vmin, vmax]
-        norm = mcol.Normalize(vmin=vmin, vmax=vmax)
 
+    norm = mcol.Normalize(vmin=vmin, vmax=vmax)
     rgb = cmap(norm(data))
     colors = np.round(rgb * 255).astype(np.uint8).flatten().tolist()
 

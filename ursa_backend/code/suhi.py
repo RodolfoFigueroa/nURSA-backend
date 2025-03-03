@@ -6,6 +6,7 @@ import numpy as np
 import rasterio as rio
 
 from ursa_backend.code.constants import LST_CAT_NODATA
+from ursa_backend.code.world_cover import load_cover_and_masks
 
 
 def fmask(image: ee.Image) -> ee.Image:
@@ -135,3 +136,16 @@ def generate_categorical_raster(
     profile.update(nodata=LST_CAT_NODATA, dtype="int8")
     with rio.open(cat_raster_path, "w", **profile) as ds:
         ds.write(data_cat, 1)
+
+
+def calculate_rural_temperature(
+    cont_raster_path: os.PathLike, wc_raster_path: os.PathLike
+) -> float:
+    data_map = load_cover_and_masks(wc_raster_path)
+    rural_mask = data_map["rural"]
+
+    with rio.open(cont_raster_path) as ds:
+        temp = ds.read(1)
+
+    masked = np.where(rural_mask, temp, np.nan)
+    return np.nanmean(masked)

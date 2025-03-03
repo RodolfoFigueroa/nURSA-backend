@@ -23,20 +23,10 @@ async def lst_dependency(request: GeoTemporalRequestModel) -> dict[str, Path]:
     return dict(cont=cont_raster_path, cat=cat_raster_path)
 
 
-async def world_cover_dependency(request: GeographicRequestModel) -> dict[str, Path]:
+async def world_cover_dependency(request: GeographicRequestModel) -> Path:
     box_ee = request.bounds_to_ee()
-    cover_map = get_world_cover(box_ee)
+    img = get_world_cover(box_ee)
+    path = Path(f"./data/{request.get_hash()}/cover.tif")
+    load_or_download_image(img, path, box_ee, nodata=0)
 
-    path_map = {}
-    raster_dir = Path(f"./data/{request.get_hash()}/wc")
-    for label, img in cover_map.items():
-        if label == "cover":
-            nodata = 0
-        else:
-            nodata = None
-        path = raster_dir / f"{label}.tif"
-        load_or_download_image(img, path, box_ee, nodata=nodata)
-
-        path_map[label] = path
-
-    return path_map
+    return path

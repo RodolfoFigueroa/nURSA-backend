@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from ursa_backend.routers import suhi
 
-ee.Initialize()
+ee.Initialize(project="ee-ursa-test")
 
 app = FastAPI()
 app.include_router(suhi.router)

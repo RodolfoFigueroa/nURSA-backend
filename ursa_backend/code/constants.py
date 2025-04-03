@@ -1,4 +1,4 @@
-import numpy as np
-
 LST_NODATA = -99_999
 LST_CAT_NODATA = -127
+
+WANTED_WORLDCOVER_LABELS = (10, 20, 30, 40, 50, 60, 90, 95, 100)

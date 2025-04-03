@@ -20,3 +20,14 @@ class GeographicRequestModel(BaseModel):
 class GeoTemporalRequestModel(GeographicRequestModel):
     year: int
     season: str
+
+
+class CenterRequestModel(BaseModel):
+    x: float
+    y: float
+
+
+class RasterResponseModel(BaseModel):
+    data: list
+    transform: list
+    crs: str

@@ -8,34 +8,8 @@ import matplotlib.colors as mcol
 import numpy as np
 import rasterio as rio
 
-from typing import Optional
-
-
-def format_date(season: str, year: int) -> list[str, str]:
-    """Formats a year and season string in a way that's interpretable by Earth Engine's filters.
-
-    Parameters
-    ----------
-    season: str
-        Season of the year to analyze. Possible values are Q1 (spring), Q2 (summer), Q3 (fall), Q4 (winter) and Qall (entire year).
-
-    year: int
-        Year to analyze.
-
-    Returns
-    -------
-    str
-        Date string in '{year}-{month}-{day}' format.
-    """
-    sdict = {
-        "Q1": [f"{year}-3-1", f"{year}-5-31"],
-        "Q2": [f"{year}-6-1", f"{year}-8-31"],
-        "Q3": [f"{year}-9-1", f"{year}-11-30"],
-        "Q4": [f"{year}-12-1", f"{year + 1}-2-29"],
-        "Qall": [f"{year}-1-1", f"{year}-12-31"],
-    }
-
-    return sdict[season]
+from shapely import Geometry
+from typing import Callable, Literal, Sequence, assert_never
 
 
 def bbox_to_ee(bbox: shapely.Polygon) -> ee.Geometry.Polygon:
@@ -109,7 +83,7 @@ def load_or_download_image(
     img: ee.Image,
     raster_path: os.PathLike,
     bbox: ee.Geometry,
-    nodata: Optional[float] = None,
+    nodata: float | None = None,
 ) -> None:
     if raster_path.exists():
         return
@@ -124,7 +98,7 @@ def load_or_download_image(
     geemap.download_ee_image(
         img,
         temp_raster_path,
-        scale=100,
+        scale=50,
         crs="EPSG:4326",
         region=bbox,
         unmask_value=nodata,
@@ -150,57 +124,36 @@ def load_or_download_image(
 
 
 def raster_to_rgb(
-    raster_path: os.PathLike, *, discrete: bool = False
-) -> tuple[list, int, int, list[float]]:
-    """Converts a raster in the filesystem to an RGBA array.
+    data: np.ndarray,
+    *,
+    nodata: float | None = None,
+    kind: Literal["continuous", "discrete", "continuous_centered"],
+) -> tuple[list, list[float]]:
+    data = data.astype(float).copy()
 
-    Parameters
-    ----------
-    raster_path: os.PathLike
-        Path to the raster.
-
-    vmin: float
-        Color scale minimum.
-
-    vmax: float
-        Color scale maximum.
-
-    Returns
-    -------
-    colors: list[int]
-        Flattened RGBA array.
-
-    width: int
-        Width of the array.
-
-    height: int
-        Height of the array.
-    """
-
-    with rio.open(raster_path) as ds:
-        data = ds.read(1)
-        width = ds.width
-        height = ds.height
-        nodata = ds.nodata
-
-    data = data.astype(float)
-    data[data == nodata] = np.nan
+    if nodata is not None:
+        data[data == nodata] = np.nan
 
     data_notna = data[np.bitwise_not(np.isnan(data))]
 
     cmap = mpl.colormaps["RdBu"].reversed()
 
-    if discrete:
-        vmin = -3
-        vmax = 3
+    if kind == "discrete":
         bounds = []
+        norm = mcol.Normalize(vmin=-3, vmax=3)
     else:
-        vmin = np.quantile(data_notna, 0.05)
-        vmax = np.quantile(data_notna, 0.95)
+        vmin = np.quantile(data_notna, 0.03)
+        vmax = np.quantile(data_notna, 0.97)
         bounds = [vmin, vmax]
 
-    norm = mcol.Normalize(vmin=vmin, vmax=vmax)
+        if kind == "continuous":
+            norm = mcol.Normalize(vmin=-vmin, vmax=vmax)
+        elif kind == "continuous_centered":
+            norm = mcol.TwoSlopeNorm(vcenter=0, vmin=vmin, vmax=vmax)
+        else:
+            assert_never(kind)
+
     rgb = cmap(norm(data))
     colors = np.round(rgb * 255).astype(np.uint8).flatten().tolist()
 
-    return colors, width, height, bounds
+    return colors, bounds

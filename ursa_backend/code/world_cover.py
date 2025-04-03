@@ -9,6 +9,15 @@ import rasterio as rio
 
 from affine import Affine
 from rasterio.crs import CRS  # pylint: disable=no-name-in-module
+from rasterio.windows import Window
+from typing import Generator, TypedDict
+
+
+class MaskMap(TypedDict):
+    urban: np.ndarray
+    rural: np.ndarray
+    valid: np.ndarray
+    cover: np.ndarray | None = None
 
 
 def dilate_binary_array(
@@ -49,19 +58,35 @@ def dilate_binary_array(
     )
     burnt = rio.features.rasterize(
         df["geometry"].to_numpy().tolist(), out_shape=arr.shape, transform=transform
-    )
+    ).astype(bool)
     return burnt
 
 
+# pylint: disable=possibly-used-before-assignment,undefined-variable
 def get_masks(
-    wc_arr: np.ndarray, *, transform: Affine, crs: CRS
-) -> dict[str, np.ndarray]:
-    """Calculates urban, rural and unwanted masks from a WorldCover image.
+    wc_arr: np.ndarray,
+    *,
+    transform: Affine,
+    crs: CRS,
+    urban: bool = True,
+    rural: bool = True,
+    valid: bool = True,
+) -> MaskMap:
+    """Calculates urban, rural and valid masks from a WorldCover image.
 
     Parameters
     ----------
     wc_arr: np.ndarray
         Data extracted from WorldCover raster.
+
+    urban: bool
+        Whether to return the urban mask.
+
+    rural: bool
+        Whether to return the urban mask. If `rural=True`, this mask is calculated regardless.
+
+    valid: bool
+        Whether to return the valid mask. If `rural=True`, this mask is calculated regardless.
 
     Returns
     -------
@@ -69,19 +94,36 @@ def get_masks(
         A dictionary with values corresponding to the resultant masks. The keys are as follow:
             - urban: Urban mask. All pixels with a value of 1 are urban.
             - rural: Rural mask. All pixels with a value of 1 are rural.
-            - unwanted: Unwanted mask. All pixels with a value of 0 are not valid and shouldn't be used.
+            - valid: Valid mask. All pixels with a value of 0 are not valid for temperature calculations and shouldn't be used.
     """
-    urban_mask = wc_arr == 50
-    rural_mask = np.bitwise_not(
-        dilate_binary_array(urban_mask, transform=transform, crs=crs, buffer_size=500)
+    if urban or rural:
+        urban_mask = wc_arr == 50
+
+    if rural or valid:
+        snow_mask = wc_arr != 70
+        water_mask = wc_arr != 80
+        valid_mask = np.bitwise_and(snow_mask, water_mask)
+
+    if rural:
+        rural_mask = np.bitwise_not(
+            dilate_binary_array(
+                urban_mask, transform=transform, crs=crs, buffer_size=500
+            )
+        )
+
+        if not urban:
+            del urban_mask
+
+        rural_mask = np.bitwise_and(rural_mask, valid_mask)
+
+        if not valid:
+            del valid_mask
+
+    return MaskMap(
+        urban=urban_mask if urban else None,
+        rural=rural_mask if rural else None,
+        valid=valid_mask if valid else None,
     )
-
-    snow_mask = wc_arr != 70
-    water_mask = wc_arr != 80
-    unwanted_mask = np.bitwise_and(snow_mask, water_mask)
-    rural_mask = np.bitwise_and(rural_mask, unwanted_mask)
-
-    return {"urban": urban_mask, "rural": rural_mask, "unwanted": unwanted_mask}
 
 
 def get_world_cover(bbox: ee.Geometry) -> ee.Image:
@@ -89,47 +131,45 @@ def get_world_cover(bbox: ee.Geometry) -> ee.Image:
     return lc_cover
 
 
-def load_cover_and_masks(wc_path: os.PathLike) -> dict[str, np.ndarray]:
+def load_cover_and_masks(
+    wc_path: os.PathLike,
+    *,
+    urban: bool = False,
+    rural: bool = False,
+    valid: bool = False,
+) -> MaskMap:
     with rio.open(wc_path) as ds:
         data = ds.read(1)
         crs = ds.crs
         transform = ds.transform
 
-    masks = get_masks(data, transform=transform, crs=crs)
+    masks = get_masks(
+        data, transform=transform, crs=crs, urban=urban, rural=rural, valid=valid
+    )
     masks["cover"] = data
     return masks
 
 
-# def get_temps(lst: ee.Image, masks: dict[str, ee.Image]) -> dict[str, dict[str, float]]:
-#     t_dict = {}
+def load_cover_and_masks_generator(
+    wc_path: os.PathLike,
+    *,
+    urban: bool = False,
+    rural: bool = False,
+    valid: bool = False,
+) -> Generator[tuple[Window, MaskMap], None, None]:
+    with rio.open(wc_path) as ds:
+        for _, window in ds.block_windows(1):
+            data = ds.read(1, window=window)
+            crs = ds.crs
+            transform = ds.transform
 
-#     reducer = ee.Reducer.mean().combine(
-#         ee.Reducer.stdDev(),
-#         sharedInputs=True,
-#     )
-#     for nmask in ["total", "rural", "urban"]:
-#         if nmask == "total":
-#             lst_masked = lst
-#         else:
-#             lst_masked = lst.updateMask(masks[nmask])
-
-#         res = lst_masked.reduceRegion(reducer, scale=100).getInfo()
-
-#         t_dict[nmask] = dict(
-#             mean=res["ST_B10_mean"],
-#             std=res["ST_B10_stdDev"],
-#         )
-
-#     urban_mean = t_dict["urban"]["mean"]
-#     rural_mean = t_dict["rural"]["mean"]
-
-#     if abs(rural_mean - urban_mean) < 0.5 or rural_mean > urban_mean:
-#         lst_masked = lst.updateMask(masks["urban"])
-#         res = lst_masked.reduceRegion(
-#             ee.Reducer.percentile([5]), bestEffort=False, scale=100
-#         ).getInfo()
-#         t_dict["rural_old"] = {}
-#         t_dict["rural_old"]["mean"] = rural_mean
-#         t_dict["rural"]["mean"] = res["ST_B10"]
-
-#     return t_dict
+            masks = get_masks(
+                data,
+                transform=transform,
+                crs=crs,
+                urban=urban,
+                rural=rural,
+                valid=valid,
+            )
+            masks["cover"] = data
+            yield (window, masks)

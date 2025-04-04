@@ -177,3 +177,4 @@ data/
 data_old/
 *.csv
 *.npy
+.DS_Store
